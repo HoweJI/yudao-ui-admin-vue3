@@ -6,7 +6,7 @@ import { propTypes } from '@/utils/propTypes'
 import { isNumber } from '@/utils/is'
 import { ElMessage } from 'element-plus'
 import { useLocaleStore } from '@/store/modules/locale'
-import { getAccessToken, getTenantId } from '@/utils/auth'
+import { getRefreshToken, getTenantId } from '@/utils/auth'
 import { getUploadUrl } from '@/components/UploadFile/src/useUpload'
 
 defineOptions({ name: 'Editor' })
@@ -100,12 +100,12 @@ const editorConfig = computed((): IEditorConfig => {
           // 自定义增加 http  header
           headers: {
             Accept: '*',
-            Authorization: 'Bearer ' + getAccessToken(),
+            Authorization: 'Bearer ' + getRefreshToken(), // 使用 getRefreshToken() 方法，而不使用 getAccessToken() 方法的原因：Editor 无法方便的刷新访问令牌
             'tenant-id': getTenantId()
           },
 
           // 超时时间，默认为 10 秒
-          timeout: 5 * 1000, // 5 秒
+          timeout: 15 * 1000, // 15 秒
 
           // form-data fieldName，后端接口参数名称，默认值wangeditor-uploaded-image
           fieldName: 'file',
@@ -148,7 +148,7 @@ const editorConfig = computed((): IEditorConfig => {
           // 自定义增加 http  header
           headers: {
             Accept: '*',
-            Authorization: 'Bearer ' + getAccessToken(),
+            Authorization: 'Bearer ' + getRefreshToken(), // 使用 getRefreshToken() 方法，而不使用 getAccessToken() 方法的原因：Editor 无法方便的刷新访问令牌
             'tenant-id': getTenantId()
           },
 

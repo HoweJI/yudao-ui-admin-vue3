@@ -1,15 +1,16 @@
-import axios, {
-  AxiosError,
-  AxiosInstance,
-  AxiosRequestHeaders,
-  AxiosResponse,
-  InternalAxiosRequestConfig
-} from 'axios'
+import axios, { AxiosError, AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import qs from 'qs'
 import { config } from '@/config/axios/config'
-import { getAccessToken, getRefreshToken, getTenantId, removeToken, setToken } from '@/utils/auth'
+import {
+  getAccessToken,
+  getRefreshToken,
+  getTenantId,
+  getVisitTenantId,
+  removeToken,
+  setToken
+} from '@/utils/auth'
 import errorCode from './errorCode'
 
 import { resetRouter } from '@/router'
@@ -30,14 +31,18 @@ export const isRelogin = { show: false }
 let requestList: any[] = []
 // 是否正在刷新中
 let isRefreshToken = false
-// 请求白名单，无须token的接口
+// 请求白名单，无须 token 的接口
 const whiteList: string[] = ['/login', '/refresh-token']
 
 // 创建axios实例
 const service: AxiosInstance = axios.create({
   baseURL: base_url, // api 的 base_url
   timeout: request_timeout, // 请求超时时间
-  withCredentials: false // 禁用 Cookie 等信息
+  withCredentials: false, // 禁用 Cookie 等信息
+  // 自定义参数序列化函数
+  paramsSerializer: (params) => {
+    return qs.stringify(params, { allowDots: true })
+  }
 })
 
 // request拦截器
@@ -46,34 +51,36 @@ service.interceptors.request.use(
     // 是否需要设置 token
     let isToken = (config!.headers || {}).isToken === false
     whiteList.some((v) => {
-      if (config.url) {
-        config.url.indexOf(v) > -1
+      if (config.url && config.url.indexOf(v) > -1) {
         return (isToken = false)
       }
     })
     if (getAccessToken() && !isToken) {
-      ;(config as Recordable).headers.Authorization = 'Bearer ' + getAccessToken() // 让每个请求携带自定义token
+      config.headers.Authorization = 'Bearer ' + getAccessToken() // 让每个请求携带自定义token
     }
     // 设置租户
     if (tenantEnable && tenantEnable === 'true') {
       const tenantId = getTenantId()
-      if (tenantId) (config as Recordable).headers['tenant-id'] = tenantId
+      if (tenantId) config.headers['tenant-id'] = tenantId
+      // 只有登录时，才设置 visit-tenant-id 访问租户
+      const visitTenantId = getVisitTenantId()
+      if (config.headers.Authorization && visitTenantId) {
+        config.headers['visit-tenant-id'] = visitTenantId
+      }
     }
-    const params = config.params || {}
-    const data = config.data || false
-    if (
-      config.method?.toUpperCase() === 'POST' &&
-      (config.headers as AxiosRequestHeaders)['Content-Type'] ===
-        'application/x-www-form-urlencoded'
-    ) {
-      config.data = qs.stringify(data)
+    const method = config.method?.toUpperCase()
+    // 防止 GET 请求缓存
+    if (method === 'GET') {
+      config.headers['Cache-Control'] = 'no-cache'
+      config.headers['Pragma'] = 'no-cache'
     }
-    // get参数编码
-    if (config.method?.toUpperCase() === 'GET' && params) {
-      config.params = {}
-      const paramsStr = qs.stringify(params, { allowDots: true })
-      if (paramsStr) {
-        config.url = config.url + '?' + paramsStr
+    // 自定义参数序列化函数
+    else if (method === 'POST') {
+      const contentType = config.headers['Content-Type'] || config.headers['content-type']
+      if (contentType === 'application/x-www-form-urlencoded') {
+        if (config.data && typeof config.data !== 'string') {
+          config.data = qs.stringify(config.data)
+        }
       }
     }
     return config
@@ -206,6 +213,10 @@ const refreshToken = async () => {
 const handleAuthorized = () => {
   const { t } = useI18n()
   if (!isRelogin.show) {
+    // 如果已经到登录页面则不进行弹窗提示
+    if (window.location.href.includes('login')) {
+      return
+    }
     isRelogin.show = true
     ElMessageBox.confirm(t('sys.api.timeoutMessage'), t('common.confirmTitle'), {
       showCancelButton: false,
